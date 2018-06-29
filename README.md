@@ -1,13 +1,15 @@
-!!! Warning !!! 
+# Warning
 
-This toolbox contains a precompiled x64 bit MEX. If you you have an issue running the MEX or you have x86 bit version follow these steps:
+This toolbox contains a precompiled x64 bit MEX. **You need to install the SDRplay_RSP_API-Windows-2.11.1.exe drivers first.**
+
+If you you have an issue running the MEX or you have x86 bit version follow these steps:
 
     1. Copy paste the .dll and .lib from \dll_lib\x86 in the same folder.
     2. Compile the C/MEX file in Matlab with the following command, "mex sdrplay_mex.c mir_sdr_api.lib"
 
-Latest .dll and .lib version can be found at https://www.sdrplay.com/downloads/
+Latest .dll and .lib version can be found at https://www.sdrplay.com/downloads/. **Drivers after 2.11.1 are not compatible with this code.**
 
-!!! Information !!!
+# Information
 
 The SDRplay MEX/class is a simple wrapper for the SDRplay library to receive directly from Matlab. It allows uninterrupted transfers without storing signals on disk intermediately.
 
