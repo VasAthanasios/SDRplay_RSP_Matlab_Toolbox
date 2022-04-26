@@ -3,7 +3,7 @@ There are some steps that you need to do in each machine to get the toolbox up a
 
   1. Download the API 3.07 from the official SDRplay website. [https://www.sdrplay.com/downloads/](https://www.sdrplay.com/downloads/)
   2. Install the API in the default location. (This is necessary as the default library paths are coded in the MEX/C file)
-  3. Add the .dll/.lib path in the in the Windows Environment variables. (e.g. "C:\Program Files\SDRplay\API\x64" for 64 bit system)
+  3. Add the .dll/.lib path in the in the Path Environment variables. (e.g. "C:\Program Files\SDRplay\API\x64" for 64 bit system). For more info consult the [Microsoft Doc](https://docs.microsoft.com/en-us/previous-versions/office/developer/sharepoint-2010/ee537574(v=office.14)).
   4. Run the "Build_MEX.m" file to create the MEX file which enables communication between Matlab and the RSP.
   5. You can now run the "Example.m" without any issue.
 
