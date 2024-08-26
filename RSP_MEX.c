@@ -8,8 +8,14 @@
 
 #define buflen 2000000
 
-static short buf_i[buflen];
-static short buf_q[buflen];
+static short bufA_i[buflen];
+static short bufA_q[buflen];
+
+static short bufB_i[buflen];
+static short bufB_q[buflen];
+
+int masterInitialised = 0;
+int slaveUninitialised = 0;
 
 sdrplay_api_DeviceT chosenDevice;
 sdrplay_api_DeviceParamsT *deviceParams = NULL;
@@ -22,17 +28,23 @@ void StreamACallback(short *xi, short *xq, sdrplay_api_StreamCbParamsT *params, 
     unsigned int i = 0;
 	for(i = 0; i < numSamples; i++) 
 	{
-		buf_i[(params -> firstSampleNum+i)%buflen] = xi[i];
-		buf_q[(params -> firstSampleNum+i)%buflen] = xq[i];
+		bufA_i[(params -> firstSampleNum+i)%buflen] = xi[i];
+		bufA_q[(params -> firstSampleNum+i)%buflen] = xq[i];
     }
 	return;
 }
 
 void StreamBCallback(short* xi, short* xq, sdrplay_api_StreamCbParamsT* params, unsigned int numSamples, unsigned int reset, void* cbContext) {
+	unsigned int i = 0;
+	for (i = 0; i < numSamples; i++)
+	{
+		bufB_i[(params->firstSampleNum + i) % buflen] = xi[i];
+		bufB_q[(params->firstSampleNum + i) % buflen] = xq[i];
+	}
 	return;
 }
 
-mxArray * getdata(void) {
+mxArray * getdataA(void) {
     mxArray * p;
     short	 *x,*y;
     unsigned int i;
@@ -43,8 +55,25 @@ mxArray * getdata(void) {
     
     for(i = 0; i < buflen; i++) 
 	{	
-		x[i]=buf_i[i];
-		y[i]=buf_q[i];
+		x[i]=bufA_i[i];
+		y[i]=bufA_q[i];
+	}
+    return p;
+}
+
+mxArray * getdataB(void) {
+    mxArray * p;
+    short	 *x,*y;
+    unsigned int i;
+	
+    p=mxCreateNumericMatrix(buflen,1,mxINT16_CLASS,mxCOMPLEX);
+    x=mxGetData(p);
+    y=mxGetImagData(p);
+    
+    for(i = 0; i < buflen; i++) 
+	{	
+		x[i]=bufB_i[i];
+		y[i]=bufB_q[i];
 	}
     return p;
 }
@@ -140,6 +169,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]){
 			unsigned int ndev;
 			unsigned int chosenIdx = 0;
 
+			unsigned int reqTuner = 0;
+			unsigned int master_slave = 1;
+
+
              // Lock API while device selection is performed
             sdrplay_api_LockDeviceApi();
 			
@@ -147,15 +180,35 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]){
             if ((err = sdrplay_api_GetDevices(devs, &ndev, sizeof(devs) / sizeof(sdrplay_api_DeviceT))) != sdrplay_api_Success) {
                 printf("sdrplay_api_GetDevices failed %s\n", sdrplay_api_GetErrorString(err));
             }
-            
+
             printf("MaxDevs=%d NumDevs=%d\n", sizeof(devs) / sizeof(sdrplay_api_DeviceT), ndev);
             if (ndev > 0) {
                 for (i = 0; i < (int)ndev; i++) {
-                    if (devs[i].hwVer != SDRPLAY_RSPduo_ID || devs[i].hwVer != SDRPLAY_RSPdx_ID) {
-                        chosenIdx = i;
-                        break;
-                    }
+					if (devs[i].hwVer == SDRPLAY_RSPduo_ID)
+						printf("Dev%d: SerNo=%s hwVer=%d tuner=0x%.2x rspDuoMode=0x%.2x\n", i,
+							devs[i].SerNo, devs[i].hwVer, devs[i].tuner, devs[i].rspDuoMode);
+					else
+						printf("Dev%d: SerNo=%s hwVer=%d tuner=0x%.2x\n", i, devs[i].SerNo,
+							devs[i].hwVer, devs[i].tuner);
                 }
+				// Choose device
+				if (devs[i].hwVer == SDRPLAY_RSPduo_ID) // requires RSPduo
+				{
+					// Pick first RSPduo
+					for (i = 0; i < (int)ndev; i++)	{
+						if (devs[i].hwVer == SDRPLAY_RSPduo_ID)	{
+							chosenIdx = i;
+							break;
+						}
+					}
+				}
+				else {
+					// Pick first device of any type
+					for (i = 0; i < (int)ndev; i++)	{
+						chosenIdx = i;
+						break;
+					}
+				}
             }
             else {
                 Close_API();
@@ -163,6 +216,23 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]){
             }
             chosenDevice = devs[chosenIdx];
             printf("chosenDevice = %p\n", chosenDevice.dev);
+
+			// If chosen device is an RSPduo, assign additional fields
+			if (chosenDevice.hwVer == SDRPLAY_RSPduo_ID)
+			{
+				// If master device is available, select device as master
+				if (chosenDevice.rspDuoMode & sdrplay_api_RspDuoMode_Master)
+				{
+					// Select tuner based on user input (or default to TunerA)
+
+					chosenDevice.rspDuoMode = sdrplay_api_RspDuoMode_Master;
+					// Need to specify sample frequency in master/slave mode
+					chosenDevice.rspDuoSampleFreq = 6000000.0;
+					printf("Dev%d: selected rspDuoMode=0x%.2x tuner=0x%.2x rspDuoSampleFreq=%.1f\n",
+						chosenIdx, chosenDevice.rspDuoMode,
+						chosenDevice.tuner, chosenDevice.rspDuoSampleFreq);
+				}
+			}
 
             // Select chosen device
             if ((err = sdrplay_api_SelectDevice(&chosenDevice)) != sdrplay_api_Success) {
@@ -184,7 +254,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]){
             }
 
             // Return to Matlab
-            printf("RSP1A device successfully selected\n");    
+            printf("SDRplay device successfully selected\n");    
             plhs[0] = mxCreateDoubleScalar(ndev);
             plhs[1] = mxCreateString(chosenDevice.SerNo);
             plhs[2] = mxCreateString(chosenDevice.dev);
@@ -451,20 +521,44 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]){
 				
 				// Now we're ready to start by calling the initialisation function
 				// This will configure the device and start streaming
-				err = sdrplay_api_Init(chosenDevice.dev, &cbFns, NULL);
-				if (err == sdrplay_api_Success) {
-					printf("Initialised!\n");
-					Device_Streaming = 1;
+				if ((err = sdrplay_api_Init(chosenDevice.dev, &cbFns, NULL)) != sdrplay_api_Success)
+				{
+					printf("sdrplay_api_Init failed %s\n", sdrplay_api_GetErrorString(err));
+					if (err == sdrplay_api_StartPending) // This can happen if we're starting in master / slave mode as a slave and the master is not yet running
+					{
+						while (1)
+						{
+							Sleep(1000);
+							if (masterInitialised) // Keep polling flag set in event callback until	the master is initialised
+							{
+								// Redo call - should succeed this time
+								if ((err = sdrplay_api_Init(chosenDevice.dev, &cbFns, NULL)) != sdrplay_api_Success)
+								{
+									printf("sdrplay_api_Init failed %s\n", sdrplay_api_GetErrorString(err));
+								}
+								printf("Waiting for master to initialise\n");
+							}
+						}
+					}
+					else
+					{
+						sdrplay_api_ErrorInfoT* errInfo = sdrplay_api_GetLastError(NULL);
+						if (errInfo != NULL)
+							printf("Error in %s: %s(): line %d: %s\n", errInfo->file, errInfo -> function, errInfo->line, errInfo->message);
+					}
 				}
-				else {printf("sdrplay_api_Init failed %s\n", sdrplay_api_GetErrorString(err));}
 				plhs[0]=mxCreateDoubleScalar(err);
 			}
-			else { plhs[0]=mxCreateDoubleScalar(-1); }
+			else { 
+                printf("Stream nitialised!\n");
+                plhs[0]=mxCreateDoubleScalar(-1); 
+            }
 		}
 
 		// Else if Data
         else if(strcmp("data",cmd)==0) {	
-			plhs[0]=getdata(); 
+			plhs[0]=getdataA(); 
+			plhs[1]=getdataB(); 
         }
 
 		// Else if Uninitialise Stream
