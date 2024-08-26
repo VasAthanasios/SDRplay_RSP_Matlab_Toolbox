@@ -1,7 +1,7 @@
 # Required steps before you are ready!
 There are some steps that you need to do in each machine to get the toolbox up and running.
 
-  1. Download the API 3.07 from the official SDRplay website. [https://www.sdrplay.com/downloads/](https://www.sdrplay.com/downloads/)
+  1. Download the API 3.15 from the official SDRplay website. [https://www.sdrplay.com/api/](https://www.sdrplay.com/api/)
   2. Install the API in the default location. (This is necessary as the default library paths are coded in the MEX/C file)
   3. Add the .dll/.lib path in the in the Path Environment variables. (e.g. "C:\Program Files\SDRplay\API\x64" for 64 bit system). For more info consult the [Microsoft Doc](https://docs.microsoft.com/en-us/previous-versions/office/developer/sharepoint-2010/ee537574(v=office.14)).
   4. Run the "Build_MEX.m" file to create the MEX file which enables communication between Matlab and the RSP.
@@ -31,9 +31,10 @@ Unfortunately, no. The development was done with a RSP1A device, but I have incl
 | Supported devices | Comments     | Unsupported devices  |
 | ------------------|:------------:| --------------------:|
 | RSP1A             | Tested       | RSPdX                |
-| RSP1              | Untested     | RSPduo               |
+| RSP1              | Untested     |                      |
 | RSP2              | Untested     |                      |
-| RSP2pro           | Untested     |                      |
+| RSP2pro           | Untested     |                      |  
+| RSPduo            | In process   |                      | 
 
 If you use a device that I have marked as untested and it works without any issues please let me know and I will mark it as untested.
 If it does not work as expected, please keep reading.
