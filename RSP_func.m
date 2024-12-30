@@ -33,7 +33,7 @@ classdef RSP_func < handle
     properties (SetObservable)
         SampleRateMHz       % Set RSP sample rate, 2 - 10 MHz.
         FrequencyMHz        % Set RSP tuner frequency, see specification for details.
-        BandwidthMHz        % Set RSP BandwidthMHz, see table for details.
+        BandwidthKHz        % Set RSP BandwidthKHz, see table for details.
         IFtype              % Set RSP IF to be used, see specification for details.
         LNAstate            % Set RSP LNA state based on Grmode, see specification for details.
         AGC_Enable          % Enable or Disable the RSP AGC
@@ -48,7 +48,8 @@ classdef RSP_func < handle
         LoMode
         dcOffsetIQ
         Decimation
-        
+        Duo_DualTuner
+
         StreamInitNumericType = 'double' % Numeric type of RX samples
         PacketData      % RSP data packet dropped here.
     end
@@ -56,10 +57,10 @@ classdef RSP_func < handle
     methods
         function obj = RSP_func
             Open(obj)
-            obj.SampleRateMHz = 4;
+            obj.SampleRateMHz = 6;
             obj.PPM_offset = 0;
-            obj.FrequencyMHz = 869;
-            obj.BandwidthMHz = 600;
+            obj.FrequencyMHz = 2000;
+            obj.BandwidthKHz = 1536;
             obj.IFtype = 0;
             obj.LNAstate = 0;
             obj.AGC_Enable = false;
@@ -72,18 +73,46 @@ classdef RSP_func < handle
             if (obj.DevInfo.ndev > 0)
                 % If one is availiable open its now open!
                 obj.DevOpen = 1;
+                if (obj.DevInfo.hwVer == 3)
+                    obj.Duo_DualTuner = 1; % Default dual mode
+                end
             end
         end
         
+        %% Else update Dual Tunner mode
+        function set.Duo_DualTuner(obj, mode)
+            if (obj.DevInfo.hwVer == 3)
+                if (mode == 1 || mode == 0)
+                    m = RSP_MEX('update_dualtuner', mode);
+                    if (m <= 0)
+                        obj.Duo_DualTuner = mode;
+                    end
+                else
+                    warning('Duo_DualTuner accepts only True (1) or False (0). Please see specifications');
+                end
+            else
+                warning('Device selected is not a SDRDuo.');
+            end
+        end
+
         %% Else update Sample rate
         function set.SampleRateMHz(obj,fs)
-            if fs >= 2 && fs <= 10
+            if (obj.DevInfo.hwVer == 3) 
+                if (fs==6) || (fs==8)
+                    m = RSP_MEX('update_fs', fs*1e6);
+                    if (m <= 0)
+                        obj.SampleRateMHz = fs;
+                    end
+                else
+                    warning('SDRDuo in Dual Mode, sample rate can only be 6 or 8 MHz. Please see specifications');
+                end
+            elseif (fs >= 2 && fs <= 10)
                 m = RSP_MEX('update_fs', fs*1e6);
                 if (m <= 0)
                     obj.SampleRateMHz = fs;
                 end
             else 
-                warning('Sample rate not correct, please see specifications');
+                warning('Sample rate not correct. Please see specifications');
             end
         end
         
@@ -192,6 +221,8 @@ classdef RSP_func < handle
                 if (m <= 0)
                     obj.LNAstate = lna_val;
                 end 
+            elseif (lna_val >= 0 && lna_val <= 9) && (obj.DevInfo.hwVer == 3) % RSPDuo
+
             else
                 warning('LNA state is not correct, please see specifications');  
             end
@@ -210,14 +241,23 @@ classdef RSP_func < handle
         end
         
         %% Else update BwType
-        function set.BandwidthMHz(obj, bw)
-            if (bw == 200) || (bw == 300) || (bw == 600) || (bw == 1536) || (bw == 5000) || (bw == 6000) || (bw == 7000) || (bw == 8000) 
+        function set.BandwidthKHz(obj, bw)
+            if (obj.DevInfo.hwVer == 3) 
+                if (bw==1536) || (bw==200)
+                    m = RSP_MEX('update_bwType', bw);
+                    if (m <= 0)
+                        obj.BandwidthKHz = bw;
+                    end
+                else
+                    warning('SDRDuo in Master/Slave, Bandwidth can only be 200 or 1536 MHz. Please see specifications');
+                end
+            elseif (bw == 200) || (bw == 300) || (bw == 600) || (bw == 1536) || (bw == 5000) || (bw == 6000) || (bw == 7000) || (bw == 8000) 
                 m = RSP_MEX('update_bwType', bw);
                 if (m <= 0)
-                    obj.BandwidthMHz = bw;
+                    obj.BandwidthKHz = bw;
                 end
             else
-                warning('Bandwidth not correct, please see specifications');
+                warning('BandwidthKHz not correct, please see specifications');
             end
         end
         
@@ -306,17 +346,43 @@ classdef RSP_func < handle
         end
 
         %% Get packet 
-        function data = GetPacket(obj)
-            data = RSP_MEX('data');
-            if ~isempty(data)
-                data=cast(data,obj.StreamInitNumericType);
+        function [dataA_out, dataB_out] = GetPacket(obj)
+            [dataA, dataB] = RSP_MEX('data');
+            if ~isempty(dataA)
+                dataA_out=cast(dataA,obj.StreamInitNumericType);
                 if ismember(obj.StreamInitNumericType,{'single' 'double'})
-                    data = data - mean(data);
-                    data=data./16383.5;
+                    dataA_out = dataA_out - mean(dataA_out);
+                    dataA_out=dataA_out./16383.5;
+                end
+            end
+            if ~isempty(dataB)
+                dataB_out=cast(dataB,obj.StreamInitNumericType);
+                if ismember(obj.StreamInitNumericType,{'single' 'double'})
+                    dataB_out = dataB_out - mean(dataB_out);
+                    dataB_out=dataB_out./16383.5;
                 end
             end
         end
         
+        %% Get packet Duo
+        function [dataA_out, dataB_out] = GetPacketDuo(obj)
+            [dataA, dataB] = RSP_MEX('data');
+            if ~isempty(dataA)
+                dataA_out=cast(dataA,obj.StreamInitNumericType);
+                if ismember(obj.StreamInitNumericType,{'single' 'double'})
+                    dataA_out = dataA_out - mean(dataA_out);
+                    dataA_out=dataA_out./16383.5;
+                end
+            end
+            if ~isempty(dataB)
+                dataB_out=cast(dataB,obj.StreamInitNumericType);
+                if ismember(obj.StreamInitNumericType,{'single' 'double'})
+                    dataB_out = dataB_out - mean(dataB_out);
+                    dataB_out=dataB_out./16383.5;
+                end
+            end
+        end
+
         %% Close RSP device
         function Close(obj)
             if obj.DevOpen

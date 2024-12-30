@@ -1,13 +1,17 @@
-% Simple script to determine the version of Matlab and build the MEX with 
+% Simple script to determine the OS, x64 or not, and build the MEX with 
 % the corresponding SDRplay API.
 %
 % For any questions or assistance you can find me at, 
 % vasathanasios@gmail.com.
 %
-% Athanasios Vasileiadis - 11/04/2021
+% Athanasios Vasileiadis - 30/12/2024
  
-if all(computer('arch') == 'win64')
-    mex RSP_MEX.c 'C:\Program Files\SDRplay\API\x64\sdrplay_api.lib'
-else 
-    mex RSP_MEX.c 'C:\Program Files\SDRplay\API\x86\sdrplay_api.lib'
-end 
+if ispc
+    if all(computer('arch') == 'win64')
+        mex RSP_MEX.c -g 'C:\Program Files\SDRplay\API\x64\sdrplay_api.lib'
+    else 
+        mex RSP_MEX.c -g 'C:\Program Files\SDRplay\API\x86\sdrplay_api.lib'
+    end
+else
+   mex RSP_MEX.c -g '/usr/local/lib/libsdrplay_api.so.3'
+end
